@@ -7,6 +7,7 @@
 
 typedef struct {
     int64_t currentFrame = 0;
+    int64_t currentFrameTick = 0;
     bool debug_enabled = false;
     float player_x;
     float player_y;
@@ -68,10 +69,13 @@ void render_debug(GameState* game_state, SDL_Renderer* renderer) {
     SDL_GetRenderOutputSize(renderer, &viewport.w, &viewport.h);
     SDL_FRect frame = { (float)viewport.w - frameWidth, 0, (float)frameWidth, (float)frameHeight };
     SDL_RenderRect(renderer, &frame);
-    std::string currentFrameString = "Current tick: " + std::to_string(game_state->currentFrame);
+    std::string currentFrameString = "Current frame: " + std::to_string(game_state->currentFrame);
+    std::string currentFrameTickString = "Current frame tick: " + std::to_string(game_state->currentFrameTick);
 
-    const char* xText = currentFrameString.c_str();
-    render_text_at(renderer, xText, frame.x + 5, frame.y + 5);
+    const char* currentFrameText = currentFrameString.c_str();
+    const char* currentFrameTickText = currentFrameTickString.c_str();
+    render_text_at(renderer, currentFrameText, frame.x + 5, frame.y + 5);
+    render_text_at(renderer, currentFrameTickText, frame.x + 5, frame.y + 45);
 
 }
 /* This function runs once at startup. */
@@ -118,19 +122,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
 
 /* This function runs once per frame, and is the heart of the program. */
-uint64_t previousTick;
+uint64_t completedFrame;
 
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
     uint64_t currentTick = SDL_GetTicks();
-    if (currentTick - previousTick > 10) {
-        previousTick = currentTick;
-        std::cout << SDL_GetTicks() << std::endl;
+    uint64_t currentFrameTick = currentTick - (currentTick % 10);
+    if (currentFrameTick > completedFrame) {
+        completedFrame = currentFrameTick;
+        std::cout << currentFrameTick << std::endl;
 
         AppState *as = (AppState *) appstate;
         GameState* game_state = &as->game_state;
 
         game_state->currentFrame++;
+        game_state->currentFrameTick = currentFrameTick;
 
         // Clear screen
         SDL_SetRenderDrawColor(as->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
@@ -161,7 +167,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         // Draw
         SDL_RenderPresent(as->renderer);
     } else {
-        SDL_Delay(SDL_GetTicks() - previousTick);
+        SDL_Delay(SDL_GetTicks() - currentFrameTick);
     }
 
     return SDL_APP_CONTINUE; /* carry on with the program! */
