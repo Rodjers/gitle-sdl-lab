@@ -1,4 +1,5 @@
 #define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
+#include <cmath>
 #include <iostream>
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -9,13 +10,19 @@ typedef struct {
     float y = 50;
     float v_speed = 0;
     float h_speed = 0;
-    float mass = 10;
-    float drag = 1.7;
+    float mass = 10000;
+    float drag = 0.0007;
 } Player;
 
 typedef struct {
-    float gravity = 2;
+    int w;
+    int h;
+} Viewport;
+
+typedef struct {
+    float gravity = 1000;
     float air_density = 1;
+    Viewport viewport;
 } World;
 
 typedef struct {
@@ -37,11 +44,11 @@ AppState app_state_not_pointer;
 AppState* app_state = &app_state_not_pointer;
 
 void update_player_speed(Player * player, World * world) {
-    player->v_speed = player->v_speed + (world->gravity - (player->v_speed * player->h_speed * player->drag));
+    player->v_speed = player->v_speed + ((world->gravity - ((player->v_speed * player->v_speed) * player->drag)) / 100);
 }
 
-void update_player_position(Player * player) {
-   player->y = player->y + player->v_speed;
+void update_player_position(Player * player, World * world) {
+   player->y = std::fmod((player->y + (player->v_speed / 100)), world->viewport.h);
 };
 
 void update_game_state(GameState * game_state) {
@@ -49,7 +56,7 @@ void update_game_state(GameState * game_state) {
     Player* player = &game_state->player;
     World* world = &game_state->world;
     update_player_speed(player, world);
-    update_player_position(player);
+    update_player_position(player, world);
 }
 
 void handle_key_press(GameState *game_state, const SDL_KeyboardEvent key) {
@@ -75,11 +82,6 @@ void handle_key_press(GameState *game_state, const SDL_KeyboardEvent key) {
     }
 }
 
-typedef struct {
-    int w;
-    int h;
-} Viewport;
-
 void render_text_at(SDL_Renderer* renderer, const char* text, float x, float y) {
 
     SDL_Texture* texture;
@@ -94,17 +96,17 @@ void render_text_at(SDL_Renderer* renderer, const char* text, float x, float y) 
 }
 
 void render_debug(GameState* game_state, SDL_Renderer* renderer) {
-    Viewport viewport = { 0, 0 };
     int frameHeight = 400;
     int frameWidth = 500;
-    SDL_GetRenderOutputSize(renderer, &viewport.w, &viewport.h);
-    SDL_FRect frame = { (float)viewport.w - frameWidth, 0, (float)frameWidth, (float)frameHeight };
+    SDL_GetRenderOutputSize(renderer, &game_state->world.viewport.w, &game_state->world.viewport.h);
+    SDL_FRect frame = { (float)game_state->world.viewport.w - frameWidth, 0, (float)frameWidth, (float)frameHeight };
     SDL_RenderRect(renderer, &frame);
 
     render_text_at(renderer, ("Current frame: " + std::to_string(game_state->currentFrame)).c_str(), frame.x + 5, frame.y + 5);
     render_text_at(renderer, ("Current frame tick: " + std::to_string(game_state->currentFrame)).c_str(), frame.x + 5, frame.y + 35);
     render_text_at(renderer, ("Player X: " + std::to_string(game_state->player.x)).c_str(), frame.x + 5, frame.y + 65);
     render_text_at(renderer, ("Player Y: " + std::to_string(game_state->player.y)).c_str(), frame.x + 5, frame.y + 95);
+    render_text_at(renderer, ("Player Vertical Speed: " + std::to_string(game_state->player.v_speed)).c_str(), frame.x + 5, frame.y + 95);
     render_text_at(renderer, ("World gravity: " + std::to_string(game_state->world.gravity)).c_str(), frame.x + 5, frame.y + 125);
 
 }
@@ -126,6 +128,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
+    SDL_GetRenderOutputSize(app_state->renderer, &app_state->game_state.world.viewport.w, &app_state->game_state.world.viewport.h);
     // Init fonts
     if (!TTF_Init()) {
         SDL_Log("Couldn't initialise SDL_ttf: %s\n", SDL_GetError());
@@ -160,7 +163,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         game_state->currentFrameTick = currentFrameTick;
 
         //game_state->world.gravity = 1;
-        //std::cout << game_state->world.gravity << std::endl;
+        std::cout << game_state->world.viewport.h << std::endl;
         //std::cout << game_state->player.x << std::endl;
         update_game_state(game_state);
 
@@ -213,6 +216,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
                 return SDL_APP_SUCCESS;
             }
             handle_key_press(game_state, event->key);
+        case SDL_EVENT_WINDOW_RESIZED:
+            SDL_GetRenderOutputSize(app_state->renderer, &app_state->game_state.world.viewport.w, &app_state->game_state.world.viewport.h);
         default:
             break;
     }
