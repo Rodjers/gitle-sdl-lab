@@ -21,7 +21,6 @@ typedef struct {
 
 typedef struct {
     float gravity = 1000;
-    float air_density = 1;
     Viewport viewport;
 } World;
 
@@ -40,6 +39,8 @@ typedef struct {
 } AppState;
 
 static TTF_Font *font = NULL;
+
+// Init app state
 AppState app_state_not_pointer;
 AppState* app_state = &app_state_not_pointer;
 
@@ -106,29 +107,27 @@ void render_debug(GameState* game_state, SDL_Renderer* renderer) {
     render_text_at(renderer, ("Current frame tick: " + std::to_string(game_state->currentFrame)).c_str(), frame.x + 5, frame.y + 35);
     render_text_at(renderer, ("Player X: " + std::to_string(game_state->player.x)).c_str(), frame.x + 5, frame.y + 65);
     render_text_at(renderer, ("Player Y: " + std::to_string(game_state->player.y)).c_str(), frame.x + 5, frame.y + 95);
-    render_text_at(renderer, ("Player Vertical Speed: " + std::to_string(game_state->player.v_speed)).c_str(), frame.x + 5, frame.y + 95);
-    render_text_at(renderer, ("World gravity: " + std::to_string(game_state->world.gravity)).c_str(), frame.x + 5, frame.y + 125);
+    render_text_at(renderer, ("Player Vertical Speed: " + std::to_string(game_state->player.v_speed)).c_str(), frame.x + 5, frame.y + 125);
+    render_text_at(renderer, ("World gravity: " + std::to_string(game_state->world.gravity)).c_str(), frame.x + 5, frame.y + 155);
 
 }
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-    SDL_SetAppMetadata("Example Renderer Clear", "1.0", "com.example.renderer-clear");
+    SDL_SetAppMetadata("Gitle SDL Lab", "0.1", "no.gitlestadit.app.gitle-sdl-lab");
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    // Init app state
-
-    std::cout << app_state->game_state.world.gravity << std::endl;
-    if (!SDL_CreateWindowAndRenderer("examples/renderer/clear", 640, 480, SDL_WINDOW_BORDERLESS + SDL_WINDOW_FULLSCREEN,
+    if (!SDL_CreateWindowAndRenderer("Gitle SDL Lab", 640, 480, SDL_WINDOW_BORDERLESS + SDL_WINDOW_FULLSCREEN,
                                      &app_state->window, &app_state->renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
     SDL_GetRenderOutputSize(app_state->renderer, &app_state->game_state.world.viewport.w, &app_state->game_state.world.viewport.h);
+
     // Init fonts
     if (!TTF_Init()) {
         SDL_Log("Couldn't initialise SDL_ttf: %s\n", SDL_GetError());
@@ -148,23 +147,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 /* This function runs once per frame, and is the heart of the program. */
 uint64_t completedFrame;
 
-
-
 SDL_AppResult SDL_AppIterate(void *appstate) {
     uint64_t currentTick = SDL_GetTicks();
     uint64_t currentFrameTick = currentTick - (currentTick % 10);
     if (currentFrameTick > completedFrame) {
         completedFrame = currentFrameTick;
-        // std::cout << currentFrameTick << std::endl;
 
+        // Update game state
         GameState* game_state = &app_state->game_state;
 
         game_state->currentFrame++;
         game_state->currentFrameTick = currentFrameTick;
 
-        //game_state->world.gravity = 1;
-        std::cout << game_state->world.viewport.h << std::endl;
-        //std::cout << game_state->player.x << std::endl;
         update_game_state(game_state);
 
         // Clear screen
@@ -177,16 +171,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         SDL_RenderRect(app_state->renderer, &rect);
 
         // Render Hello World
-        SDL_FRect textRect = {100, 100, 0, 0};
-        static SDL_Texture *texture = NULL;
-        SDL_Surface *text;
-        text = TTF_RenderText_Blended(font, "Hello World!", 0, {0, 255, 0, 0});
-        if (text) {
-            texture = SDL_CreateTextureFromSurface(app_state->renderer, text);
-            SDL_DestroySurface(text);
-        }
-        SDL_GetTextureSize(texture, &textRect.w, &textRect.h);
-        SDL_RenderTexture(app_state->renderer, texture, NULL, &textRect);
+        render_text_at(app_state->renderer, "Hello World 2!", 100, 100);
 
         //Render Debug
         if (game_state->debug_enabled) {
