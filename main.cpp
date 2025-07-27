@@ -6,6 +6,8 @@
 
 
 typedef struct {
+    int64_t currentFrame = 0;
+    bool debug_enabled = false;
     float player_x;
     float player_y;
 } GameState;
@@ -14,11 +16,9 @@ typedef struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
     GameState game_state;
-    Uint64 last_step;
 } AppState;
 
 static TTF_Font *font = NULL;
-static SDL_Texture *texture = NULL;
 
 void handle_key_press(GameState *game_state, const SDL_KeyboardEvent key) {
 
@@ -35,9 +35,45 @@ void handle_key_press(GameState *game_state, const SDL_KeyboardEvent key) {
         case SDL_SCANCODE_D:
             game_state->player_x = game_state->player_x + 10;
             break;
+        case SDL_SCANCODE_F1:
+            game_state->debug_enabled = !game_state->debug_enabled;
+            break;
+        default:
+            break;
     }
 }
 
+typedef struct {
+    int w;
+    int h;
+} Viewport;
+
+void render_text_at(SDL_Renderer* renderer, const char* text, float x, float y) {
+
+    SDL_Texture* texture;
+    SDL_FRect textRect = {x, y, 0, 0};
+    SDL_Surface* outputText = TTF_RenderText_Blended(font, text, 0, {255, 255, 255, 0});
+    if (outputText) {
+        texture= SDL_CreateTextureFromSurface(renderer, outputText);
+        SDL_DestroySurface(outputText);
+    }
+    SDL_GetTextureSize(texture, &textRect.w, &textRect.h);
+    SDL_RenderTexture(renderer, texture, NULL, &textRect);
+}
+
+void render_debug(GameState* game_state, SDL_Renderer* renderer) {
+    Viewport viewport = { 0, 0 };
+    int frameHeight = 200;
+    int frameWidth = 500;
+    SDL_GetRenderOutputSize(renderer, &viewport.w, &viewport.h);
+    SDL_FRect frame = { (float)viewport.w - frameWidth, 0, (float)frameWidth, (float)frameHeight };
+    SDL_RenderRect(renderer, &frame);
+    std::string currentFrameString = "Current tick: " + std::to_string(game_state->currentFrame);
+
+    const char* xText = currentFrameString.c_str();
+    render_text_at(renderer, xText, frame.x + 5, frame.y + 5);
+
+}
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     SDL_SetAppMetadata("Example Renderer Clear", "1.0", "com.example.renderer-clear");
@@ -47,24 +83,23 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
+    // Init app state
     AppState *as = (AppState *) SDL_calloc(1, sizeof(AppState));
     if (!as) {
         return SDL_APP_FAILURE;
     }
-
-    // Init app state
     *appstate = as;
-
     GameState game_state = as->game_state;
-
-    game_state.player_x = 50;
-    game_state.player_y = 50;
 
     if (!SDL_CreateWindowAndRenderer("examples/renderer/clear", 640, 480, SDL_WINDOW_BORDERLESS + SDL_WINDOW_FULLSCREEN,
                                      &as->window, &as->renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+
+    // Init Player
+    game_state.player_x = 50;
+    game_state.player_y = 50;
 
     // Init fonts
     if (!TTF_Init()) {
@@ -77,17 +112,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         SDL_Log("Couldn't open font: %s\n", SDL_GetError());
         return SDL_APP_FAILURE;
     }
-    /* Create the text */
-    SDL_Surface *text;
-    text = TTF_RenderText_Blended(font, "Hello World!", 0, {0, 255, 0, 0});
-    if (text) {
-        texture = SDL_CreateTextureFromSurface(as->renderer, text);
-        SDL_DestroySurface(text);
-    }
-    if (!texture) {
-        SDL_Log("Couldn't create text: %s\n", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
 
     return SDL_APP_CONTINUE; /* carry on with the program! */
 }
@@ -96,6 +120,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 /* This function runs once per frame, and is the heart of the program. */
 uint64_t previousTick;
 
+
 SDL_AppResult SDL_AppIterate(void *appstate) {
     uint64_t currentTick = SDL_GetTicks();
     if (currentTick - previousTick > 10) {
@@ -103,19 +128,35 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         std::cout << SDL_GetTicks() << std::endl;
 
         AppState *as = (AppState *) appstate;
-        GameState game_state = as->game_state;
+        GameState* game_state = &as->game_state;
+
+        game_state->currentFrame++;
 
         // Clear screen
         SDL_SetRenderDrawColor(as->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
         SDL_RenderClear(as->renderer); /* start with a blank canvas. */
 
-        SDL_FRect rect = {game_state.player_x, game_state.player_y, 40, 40};
+        // Render Player
+        SDL_FRect rect = {game_state->player_x, game_state->player_y, 40, 40};
+        SDL_SetRenderDrawColor(as->renderer, 255, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
+        SDL_RenderRect(as->renderer, &rect);
+
+        // Render Hello World
         SDL_FRect textRect = {100, 100, 0, 0};
+        static SDL_Texture *texture = NULL;
+        SDL_Surface *text;
+        text = TTF_RenderText_Blended(font, "Hello World!", 0, {0, 255, 0, 0});
+        if (text) {
+            texture = SDL_CreateTextureFromSurface(as->renderer, text);
+            SDL_DestroySurface(text);
+        }
         SDL_GetTextureSize(texture, &textRect.w, &textRect.h);
         SDL_RenderTexture(as->renderer, texture, NULL, &textRect);
-        SDL_SetRenderDrawColor(as->renderer, 255, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
 
-        SDL_RenderRect(as->renderer, &rect);
+        //Render Debug
+        if (game_state->debug_enabled) {
+            render_debug(game_state, as->renderer);
+        }
 
         // Draw
         SDL_RenderPresent(as->renderer);
