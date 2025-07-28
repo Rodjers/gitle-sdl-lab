@@ -1,6 +1,7 @@
 #define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
 #include <cmath>
 #include <iostream>
+#include <vector>
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <SDL3/SDL_main.h>
@@ -20,7 +21,15 @@ typedef struct {
 } Viewport;
 
 typedef struct {
+    float x;
+    float y;
+    float w;
+    float h;
+} Structure;
+
+typedef struct {
     float gravity = 1000;
+    std::vector<Structure> structures;
     Viewport viewport;
 } World;
 
@@ -111,6 +120,19 @@ void render_debug(GameState* game_state, SDL_Renderer* renderer) {
     render_text_at(renderer, ("World gravity: " + std::to_string(game_state->world.gravity)).c_str(), frame.x + 5, frame.y + 155);
 
 }
+
+void render_structure(SDL_Renderer* renderer, Structure structure) {
+    std::cout << "Rendering struct" << structure.x << structure.y << structure.w << structure.h << std::endl;
+    SDL_FRect rect = { structure.x, structure.y, structure.w, structure.h };
+    SDL_SetRenderDrawColor(app_state->renderer, 0, 0, 255, SDL_ALPHA_OPAQUE); /* black, full alpha */
+    SDL_RenderFillRect(renderer, &rect);
+}
+void render_structures(SDL_Renderer* renderer, const GameState* game_state) {
+
+    for (const auto structure : game_state->world.structures) {
+        render_structure(renderer, structure);
+    }
+}
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     SDL_SetAppMetadata("Gitle SDL Lab", "0.1", "no.gitlestadit.app.gitle-sdl-lab");
@@ -120,7 +142,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer("Gitle SDL Lab", 640, 480, SDL_WINDOW_BORDERLESS + SDL_WINDOW_FULLSCREEN,
+    if (!SDL_CreateWindowAndRenderer("Gitle SDL Lab", 2560, 1440, SDL_WINDOW_BORDERLESS + SDL_WINDOW_FULLSCREEN,
                                      &app_state->window, &app_state->renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -140,11 +162,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
+    Structure floor = { 0, app_state->game_state.world.viewport.h - 50.0f, (float)app_state->game_state.world.viewport.w, 50 };
+    app_state->game_state.world.structures.push_back(floor);
+
     return SDL_APP_CONTINUE; /* carry on with the program! */
 }
 
 
 /* This function runs once per frame, and is the heart of the program. */
+
 uint64_t completedFrame;
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
@@ -161,14 +187,18 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         update_game_state(game_state);
 
+
         // Clear screen
         SDL_SetRenderDrawColor(app_state->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
         SDL_RenderClear(app_state->renderer); /* start with a blank canvas. */
 
+        // Render structures
+        render_structures(app_state->renderer, game_state);
+
         // Render Player
         SDL_FRect rect = {game_state->player.x, game_state->player.y, 40, 40};
         SDL_SetRenderDrawColor(app_state->renderer, 255, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
-        SDL_RenderRect(app_state->renderer, &rect);
+        SDL_RenderFillRect(app_state->renderer, &rect);
 
         // Render Hello World
         render_text_at(app_state->renderer, "Hello World 2!", 100, 100);
