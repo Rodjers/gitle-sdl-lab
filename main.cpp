@@ -13,6 +13,8 @@ typedef struct {
     float h_speed = 0;
     float mass = 10000;
     float drag = 0.0007;
+    float w = 30;
+    float h = 30;
 } Player;
 
 typedef struct {
@@ -51,38 +53,111 @@ static TTF_Font *font = NULL;
 
 // Init app state
 AppState app_state_not_pointer;
-AppState* app_state = &app_state_not_pointer;
+AppState *app_state = &app_state_not_pointer;
+const bool* keys = SDL_GetKeyboardState(NULL);
 
-void update_player_speed(Player * player, World * world) {
+void update_player_speed(Player *player, World *world) {
     player->v_speed = player->v_speed + ((world->gravity - ((player->v_speed * player->v_speed) * player->drag)) / 100);
 }
 
-void update_player_position(Player * player, World * world) {
-   player->y = std::fmod((player->y + (player->v_speed / 100)), world->viewport.h);
+void update_player_position(Player *player, World *world) {
+    player->y = player->y + (player->v_speed / 100);
+
+    if ((keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_D])) {
+        player->x = player->x + (player->h_speed / 100);
+        if (player->x < 0) {
+            player->x = world->viewport.w + player->x;
+        }
+    }
+
 };
 
-void update_game_state(GameState * game_state) {
+void wrap_around(Player *player, World *world) {
+    player->x = std::fmod(player->x, world->viewport.w);
+    if (player->x < 0) {
+        player->x = world->viewport.w + player->x;
+    }
+    player->y = std::fmod(player->y, world->viewport.w);
+    if (player->y < 0) {
+        player->y = world->viewport.h + player->y;
+    }
 
-    Player* player = &game_state->player;
-    World* world = &game_state->world;
-    update_player_speed(player, world);
-    update_player_position(player, world);
+}
+bool isHorizontalCollision(Player *player, Structure structure) {
+
+    return (((structure.x < player->x && player->x < (structure.x + structure.w - 1)) || (structure.x < (player->x + player->w - 1) && (player->x + player->w - 1) < (structure.x + structure.w - 1))));
 }
 
-void handle_key_press(GameState *game_state, const SDL_KeyboardEvent key) {
+bool isVerticalCollision(Player *player, Structure structure) {
 
+    return (((structure.y < player->y && player->y < (structure.y + structure.h - 1)) || (structure.y < (player->y + player->h - 1) && (player->y + player->h - 1) < (structure.y + structure.h - 1))));
+}
+void detect_and_resolve_collision(Player *player, World *world) {
+    for (const auto structure: world->structures) {
+        if (isHorizontalCollision(player, structure)) {
+            if (isVerticalCollision(player, structure)) {
+
+                float x_overlap = 0;
+                if ((player->x + (player->w / 2)) < (structure.x + (structure.w / 2))) {
+                    x_overlap = (player->x + player->w) - (structure.x) ;
+                } else {
+                    x_overlap = (structure.x + structure.w) - player->x;
+                }
+
+                float y_overlap = 0;
+                if ((player->y + (player->h / 2)) < (structure.y + (structure.h / 2))) {
+                    y_overlap = (player->y + player->h) - (structure.y) ;
+                } else {
+                    y_overlap = (structure.y + structure.h) - player->y;
+                }
+
+                if (x_overlap < y_overlap) {
+                    if ((player->x + (player->w / 2)) < (structure.x + (structure.w / 2))) {
+                        player->x = structure.x - player->w;
+                    } else {
+                        player->x = structure.x + structure.w;
+                    }
+                } else {
+                    if ((player->y + (player->h / 2)) < (structure.y + (structure.h / 2))) {
+                        player->y = structure.y - player->h;
+                    } else {
+                        player->y = structure.y + structure.h;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void update_game_state(GameState *game_state) {
+    Player *player = &game_state->player;
+    World *world = &game_state->world;
+    update_player_speed(player, world);
+    update_player_position(player, world);
+    detect_and_resolve_collision(player, world);
+    wrap_around(player, world);
+}
+
+void handle_key_up(GameState *game_state, const SDL_KeyboardEvent key) {
     switch (key.scancode) {
-        case SDL_SCANCODE_W:
-            game_state->player.y = game_state->player.y - 10;
-            break;
-        case SDL_SCANCODE_S:
-            game_state->player.y = game_state->player.y + 10;
-            break;
         case SDL_SCANCODE_A:
-            game_state->player.x = game_state->player.x - 10;
             break;
         case SDL_SCANCODE_D:
-            game_state->player.x = game_state->player.x + 10;
+            break;
+        default:
+            break;
+    }
+}
+void handle_key_down(GameState *game_state, const SDL_KeyboardEvent key) {
+    switch (key.scancode) {
+        case SDL_SCANCODE_W:
+            game_state->player.v_speed = -300;
+            break;
+        case SDL_SCANCODE_A:
+            game_state->player.h_speed = -300;
+            break;
+        case SDL_SCANCODE_D:
+            game_state->player.h_speed = 300;
             break;
         case SDL_SCANCODE_F1:
             game_state->debug_enabled = !game_state->debug_enabled;
@@ -92,47 +167,49 @@ void handle_key_press(GameState *game_state, const SDL_KeyboardEvent key) {
     }
 }
 
-void render_text_at(SDL_Renderer* renderer, const char* text, float x, float y) {
-
-    SDL_Texture* texture;
+void render_text_at(SDL_Renderer *renderer, const char *text, float x, float y) {
+    SDL_Texture *texture;
     SDL_FRect textRect = {x, y, 0, 0};
-    SDL_Surface* outputText = TTF_RenderText_Blended(font, text, 0, {255, 255, 255, 0});
+    SDL_Surface *outputText = TTF_RenderText_Blended(font, text, 0, {255, 255, 255, 0});
     if (outputText) {
-        texture= SDL_CreateTextureFromSurface(renderer, outputText);
+        texture = SDL_CreateTextureFromSurface(renderer, outputText);
         SDL_DestroySurface(outputText);
     }
     SDL_GetTextureSize(texture, &textRect.w, &textRect.h);
     SDL_RenderTexture(renderer, texture, NULL, &textRect);
 }
 
-void render_debug(GameState* game_state, SDL_Renderer* renderer) {
+void render_debug(GameState *game_state, SDL_Renderer *renderer) {
     int frameHeight = 400;
     int frameWidth = 500;
     SDL_GetRenderOutputSize(renderer, &game_state->world.viewport.w, &game_state->world.viewport.h);
-    SDL_FRect frame = { (float)game_state->world.viewport.w - frameWidth, 0, (float)frameWidth, (float)frameHeight };
+    SDL_FRect frame = {(float) game_state->world.viewport.w - frameWidth, 0, (float) frameWidth, (float) frameHeight};
     SDL_RenderRect(renderer, &frame);
 
-    render_text_at(renderer, ("Current frame: " + std::to_string(game_state->currentFrame)).c_str(), frame.x + 5, frame.y + 5);
-    render_text_at(renderer, ("Current frame tick: " + std::to_string(game_state->currentFrame)).c_str(), frame.x + 5, frame.y + 35);
+    render_text_at(renderer, ("Current frame: " + std::to_string(game_state->currentFrame)).c_str(), frame.x + 5,
+                   frame.y + 5);
+    render_text_at(renderer, ("Current frame tick: " + std::to_string(game_state->currentFrame)).c_str(), frame.x + 5,
+                   frame.y + 35);
     render_text_at(renderer, ("Player X: " + std::to_string(game_state->player.x)).c_str(), frame.x + 5, frame.y + 65);
     render_text_at(renderer, ("Player Y: " + std::to_string(game_state->player.y)).c_str(), frame.x + 5, frame.y + 95);
-    render_text_at(renderer, ("Player Vertical Speed: " + std::to_string(game_state->player.v_speed)).c_str(), frame.x + 5, frame.y + 125);
-    render_text_at(renderer, ("World gravity: " + std::to_string(game_state->world.gravity)).c_str(), frame.x + 5, frame.y + 155);
-
+    render_text_at(renderer, ("Player Vertical Speed: " + std::to_string(game_state->player.v_speed)).c_str(),
+                   frame.x + 5, frame.y + 125);
+    render_text_at(renderer, ("World gravity: " + std::to_string(game_state->world.gravity)).c_str(), frame.x + 5,
+                   frame.y + 155);
 }
 
-void render_structure(SDL_Renderer* renderer, Structure structure) {
-    std::cout << "Rendering struct" << structure.x << structure.y << structure.w << structure.h << std::endl;
-    SDL_FRect rect = { structure.x, structure.y, structure.w, structure.h };
+void render_structure(SDL_Renderer *renderer, Structure structure) {
+    SDL_FRect rect = {structure.x, structure.y, structure.w, structure.h};
     SDL_SetRenderDrawColor(app_state->renderer, 0, 0, 255, SDL_ALPHA_OPAQUE); /* black, full alpha */
     SDL_RenderFillRect(renderer, &rect);
 }
-void render_structures(SDL_Renderer* renderer, const GameState* game_state) {
 
-    for (const auto structure : game_state->world.structures) {
+void render_structures(SDL_Renderer *renderer, const GameState *game_state) {
+    for (const auto structure: game_state->world.structures) {
         render_structure(renderer, structure);
     }
 }
+
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     SDL_SetAppMetadata("Gitle SDL Lab", "0.1", "no.gitlestadit.app.gitle-sdl-lab");
@@ -148,7 +225,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    SDL_GetRenderOutputSize(app_state->renderer, &app_state->game_state.world.viewport.w, &app_state->game_state.world.viewport.h);
+    SDL_GetRenderOutputSize(app_state->renderer, &app_state->game_state.world.viewport.w,
+                            &app_state->game_state.world.viewport.h);
 
     // Init fonts
     if (!TTF_Init()) {
@@ -162,8 +240,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    Structure floor = { 0, app_state->game_state.world.viewport.h - 50.0f, (float)app_state->game_state.world.viewport.w, 50 };
+    Structure floor = {
+        0, app_state->game_state.world.viewport.h - 50.0f, (float) app_state->game_state.world.viewport.w, 50
+    };
     app_state->game_state.world.structures.push_back(floor);
+
+    Structure platform = {
+        50, app_state->game_state.world.viewport.h - 100.0f, 50, 50
+    };
+    app_state->game_state.world.structures.push_back(platform);
 
     return SDL_APP_CONTINUE; /* carry on with the program! */
 }
@@ -180,13 +265,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         completedFrame = currentFrameTick;
 
         // Update game state
-        GameState* game_state = &app_state->game_state;
+        GameState *game_state = &app_state->game_state;
 
         game_state->currentFrame++;
         game_state->currentFrameTick = currentFrameTick;
 
         update_game_state(game_state);
-
 
         // Clear screen
         SDL_SetRenderDrawColor(app_state->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
@@ -196,9 +280,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         render_structures(app_state->renderer, game_state);
 
         // Render Player
-        SDL_FRect rect = {game_state->player.x, game_state->player.y, 40, 40};
+        Player player = game_state->player;
+        SDL_FRect player_rect = {player.x, player.y, player.w, player.h};
         SDL_SetRenderDrawColor(app_state->renderer, 255, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
-        SDL_RenderFillRect(app_state->renderer, &rect);
+        SDL_RenderFillRect(app_state->renderer, &player_rect);
 
         // Render Hello World
         render_text_at(app_state->renderer, "Hello World 2!", 100, 100);
@@ -220,7 +305,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 /* This function runs when a new event (mouse input, keypresses, etc.) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
-
     GameState *game_state = &app_state->game_state;
 
     switch (event->type) {
@@ -230,14 +314,18 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             if (event->key.scancode == SDL_SCANCODE_Q) {
                 return SDL_APP_SUCCESS;
             }
-            handle_key_press(game_state, event->key);
+            handle_key_down(game_state, event->key);
+        case SDL_EVENT_KEY_UP:
+            handle_key_up(game_state, event->key);
         case SDL_EVENT_WINDOW_RESIZED:
-            SDL_GetRenderOutputSize(app_state->renderer, &app_state->game_state.world.viewport.w, &app_state->game_state.world.viewport.h);
+            SDL_GetRenderOutputSize(app_state->renderer, &app_state->game_state.world.viewport.w,
+                                    &app_state->game_state.world.viewport.h);
         default:
             break;
     }
     return SDL_APP_CONTINUE; /* carry on with the program! */
 }
+
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     /* SDL will clean up the window/renderer for us. */
