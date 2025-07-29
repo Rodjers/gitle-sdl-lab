@@ -56,7 +56,7 @@ AppState app_state_not_pointer;
 AppState *app_state = &app_state_not_pointer;
 const bool* keys = SDL_GetKeyboardState(NULL);
 
-void update_player_speed(Player *player, World *world) {
+void apply_gravity(Player *player, World *world) {
     player->v_speed = player->v_speed + ((world->gravity - ((player->v_speed * player->v_speed) * player->drag)) / 100);
 }
 
@@ -77,7 +77,7 @@ void wrap_around(Player *player, World *world) {
     if (player->x < 0) {
         player->x = world->viewport.w + player->x;
     }
-    player->y = std::fmod(player->y, world->viewport.w);
+    player->y = std::fmod(player->y, world->viewport.h);
     if (player->y < 0) {
         player->y = world->viewport.h + player->y;
     }
@@ -122,6 +122,7 @@ void detect_and_resolve_collision(Player *player, World *world) {
                         player->y = structure.y - player->h;
                     } else {
                         player->y = structure.y + structure.h;
+                        player->v_speed = -player->v_speed;
                     }
                 }
             }
@@ -132,7 +133,7 @@ void detect_and_resolve_collision(Player *player, World *world) {
 void update_game_state(GameState *game_state) {
     Player *player = &game_state->player;
     World *world = &game_state->world;
-    update_player_speed(player, world);
+    apply_gravity(player, world);
     update_player_position(player, world);
     detect_and_resolve_collision(player, world);
     wrap_around(player, world);
@@ -151,7 +152,7 @@ void handle_key_up(GameState *game_state, const SDL_KeyboardEvent key) {
 void handle_key_down(GameState *game_state, const SDL_KeyboardEvent key) {
     switch (key.scancode) {
         case SDL_SCANCODE_W:
-            game_state->player.v_speed = -300;
+            game_state->player.v_speed = -600;
             break;
         case SDL_SCANCODE_A:
             game_state->player.h_speed = -300;
@@ -240,16 +241,25 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    Structure floor = {
-        0, app_state->game_state.world.viewport.h - 50.0f, (float) app_state->game_state.world.viewport.w, 50
+    Structure floor_a = {
+        0, app_state->game_state.world.viewport.h - 50.0f, (float) (app_state->game_state.world.viewport.w / 2) - 100, 50
     };
-    app_state->game_state.world.structures.push_back(floor);
+    app_state->game_state.world.structures.push_back(floor_a);
+
+    Structure floor_b = {
+        (app_state->game_state.world.viewport.w / 2) + 100.0f, app_state->game_state.world.viewport.h - 50.0f, (float) (app_state->game_state.world.viewport.w / 2) - 100, 50
+    };
+    app_state->game_state.world.structures.push_back(floor_b);
 
     Structure platform = {
         50, app_state->game_state.world.viewport.h - 100.0f, 50, 50
     };
     app_state->game_state.world.structures.push_back(platform);
 
+    Structure air_platform = {
+        500, app_state->game_state.world.viewport.h - 300.0f, 50, 50
+    };
+    app_state->game_state.world.structures.push_back(air_platform);
     return SDL_APP_CONTINUE; /* carry on with the program! */
 }
 
@@ -285,8 +295,17 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         SDL_SetRenderDrawColor(app_state->renderer, 255, 0, 0, SDL_ALPHA_OPAQUE); /* black, full alpha */
         SDL_RenderFillRect(app_state->renderer, &player_rect);
 
-        // Render Hello World
-        render_text_at(app_state->renderer, "Hello World 2!", 100, 100);
+        // Render Title
+        SDL_Texture *texture;
+        SDL_FRect textRect = {0, 30, 0, 0};
+        SDL_Surface *outputText = TTF_RenderText_Blended(font, "Gitle SDL Lab", 0, {0, 255, 0, 0});
+        if (outputText) {
+            texture = SDL_CreateTextureFromSurface(app_state->renderer, outputText);
+            SDL_DestroySurface(outputText);
+        }
+        SDL_GetTextureSize(texture, &textRect.w, &textRect.h);
+        textRect.x = (game_state->world.viewport.w - textRect.w) / 2;
+        SDL_RenderTexture(app_state->renderer, texture, NULL, &textRect);
 
         //Render Debug
         if (game_state->debug_enabled) {
