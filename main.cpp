@@ -151,6 +151,7 @@ void handle_key_up(GameState *game_state, const SDL_KeyboardEvent key) {
 }
 void handle_key_down(GameState *game_state, const SDL_KeyboardEvent key) {
     switch (key.scancode) {
+        case SDL_SCANCODE_SPACE:
         case SDL_SCANCODE_W:
             game_state->player.v_speed = -600;
             break;
